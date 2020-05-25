@@ -1,0 +1,13 @@
+name: SQANTI-explorer
+title: SQANTI-explorer
+username:
+account: jcbwndsr
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2239241
+bundleId: 3187230
+url: https://jcbwndsr.shinyapps.io/SQANTI-explorer/
+when: 1590407393.13793
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: igvWidget
