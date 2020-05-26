@@ -32,10 +32,13 @@ shinyUI(dashboardPage(skin="red",
                     box(
                         title="Add Classification Files",
                         fileInput("classification_file", "Classification File: ", accept = c(".txt")),
+                        fileInput("gtf_file", "GTF (GFF v2) File: ", accept = c(".gtf")),
                         textInput("name", "Name: "),
-                        actionButton("addClassification", label = "Add Classification File"),
                         hr(),
-                        fileInput("BED_file", "BED File: ", accept = c(".bed"))
+                        h4("Genome (only required for genome browser)"),
+                        fileInput("FA_file", "FASTA: ", accept = c(".fa")),
+                        fileInput("FAI_file", "FASTA Index:", accept = c(".fai")),
+                        actionButton("addClassification", label = "Add Classification File")
                     ),
                     box(title = "Your Inputs", tableOutput('inputTable'), downloadButton("downloadData", "Download Data")),
                 )
@@ -71,18 +74,21 @@ shinyUI(dashboardPage(skin="red",
                                tabPanel("% Novel Genes", plotlyOutput("novel_genes_plot"))
                         ),
                         valueBoxOutput("selected_transcript_count"),
-                        box(width = NULL, title="Selected Transcripts",
-                            textOutput("selected_transcripts")    
+                        box(width = NULL, title="Selected Isoforms",
+                            textOutput("selected_transcripts_count")
                         ),
                         box(width = NULL, title="Download",
-                            downloadButton("downloadFilteredData", "Download Filtered Data"),
-                            downloadButton("downloadSelectedData", "Download Selected Data")
+                            downloadButton("downloadFilteredData", "Download Filtered Classification"),
+                            downloadButton("downloadSelectedData", "Download Selected Classification"),
+                            downloadButton("downloadFilteredGTF", "Download Filtered GTF"),
+                            downloadButton("downloadSelectedGTF", "Download Selected GTF")
                         )
                     )
                 )
             ),
             tabItem(tabName="browser",
-                fluidRow(box(width=12,title = "Genome", uiOutput("epivizChart")))
+                fluidRow(box(width=12, uiOutput("selectGenomeData"))),
+                fluidRow(box(width=12,title = "Genome Browser", uiOutput("epivizChart")))
             )
         ),
     )

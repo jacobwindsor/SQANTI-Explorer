@@ -20,8 +20,9 @@ require(ggplot2)
 require(dplyr)
 require(epivizrChart)
 library(plotly)
+library(rtracklayer)
 
-options(shiny.maxRequestSize = 30*1024^2)
+options(shiny.maxRequestSize = 300*1024^2)
 
 # Plot helpers
 geom_perc_y <- scale_y_continuous(labels = scales::percent_format(), name="Percentage (%)")
@@ -38,7 +39,7 @@ shinyServer(function(input, output) {
     makeReactiveBinding("classifications")
     
     observeEvent(input$addClassification, {
-        req(input$classification_file, input$name)
+        req(input$classification_file, input$gtf_file, input$name)
         
         if(input$addClassification > 0) {
             isolate({
@@ -46,9 +47,11 @@ shinyServer(function(input, output) {
                 new_row <- tibble(
                     name = input$name,
                     file = input$classification_file[["name"]],
+                    gtf_path = input$gtf_file[["datapath"]],
+                    fa_path = ifelse(is.null(input$FA_file), NA, input$FA_file[["datapath"]]),
+                    fai_path = ifelse(is.null(input$FAI_file), NA, input$FAI_file[["datapath"]]),
                     path = datapath,
-                    classification = list(read_tsv(datapath))
-                ) %>%
+                    classification = list(read_tsv(datapath))) %>%
                     unnest(cols=c(classification)) %>%
                     mutate(polyexonic = if_else(exons > 1, "Polyexonic", "Monoexonic")) %>%
                     mutate(novel_transcript = if_else(associated_transcript == "novel", "Novel", "Annotated")) %>%
@@ -160,63 +163,113 @@ shinyServer(function(input, output) {
     output$selected_transcript_count <- renderValueBox({
         text <- "0"
         if (!is.null(selected_data())) {
-            text <- paste0(selected_data() %>% count() %>% first())
+            text <- paste0(selected_data() %>% count() %>% dplyr::first())
         }
         return(valueBox(
             text, "Selected Transcripts", icon=icon("abacus"), color="yellow", fill=TRUE
         ))
     })
     
-    output$selected_transcripts <- renderText({
+    output$selected_transcripts_count <- renderText({
         if (is.null(selected_data())) return("Click a bar")
         selected_data() %>% ungroup() %>%
-            select(isoform) %>%
-            top_n(100) %>%
-            paste0(",")
+            count() %>% dplyr::first()
     })
 
+    output$selectGenomeData <- renderUI({
+        req(classifications())
+        selectInput("genome_data", "Select Data To Visualize: ", choices = classifications() %>% distinct(name) %>% pull(name))
+    })
+    
     output$epivizChart <- renderUI({
         validate(
-            need(input$BED_file, "Please upload a BED file")
+            need(data_to_plot() %>% ungroup() %>% select(fa_path) %>% map_lgl(~ all(!is.na(.x))), "Please upload at least one FASTA file."),
+            need(data_to_plot() %>% ungroup() %>% select(fai_path) %>% map_lgl(~ all(!is.na(.x))), "Please upload at least one FAI file."),
+            need(input$genome_data, "Please select a data source to visualize.")
         )
-        file <- rtracklayer::BEDFile(input$BED_file[["datapath"]])
+        
+        input_track <- rtracklayer::GTFFile(classifications() %>% filter(name == input$genome_data) %>% select(gtf_path) %>% first())
 
         igv <- epivizChart(
-            file,
+            input_track,
             datasource_name = "file1",
             chr="chr1", start=5870967, end=6357783)
 
         igv$render_component(shiny=TRUE)
     })
     
-    # Download the filtered data
+    write_classification <- function(data, filename) {
+        write.csv(
+            data %>% select(-file, -path, -gtf_path, -fa_path, -fai_path),
+            file, row.names = FALSE
+        )
+    }
+    
     output$downloadData <- downloadHandler(
         filename = "SQANTI_explorer.csv",
         content = function(file) {
-            write.csv(
-                classifications() %>% select(-file, -path),
-                file, row.names = FALSE
-            )
+            write_classification(classifications(), file)
         }
     )
     
     output$downloadFilteredData <- downloadHandler(
         filename = "SQANTI_explorer_filtered.csv",
         content = function(file) {
-            write.csv(
-                data_to_plot() %>% select(-file, -path),
-                file, row.names = FALSE
-            )
+           write_classification(data_to_plot(), file)
         }
     )
     
     output$downloadSelectedData <- downloadHandler(
         filename = "SQANTI_explorer_selected.csv",
         content = function(file) {
-            write.csv(
-                selected_data() %>% select(-file, -path),
-                file, row.names = FALSE
-            )
+            write_classification(selected_data(), file)
+        }
+    )
+    
+    # Download Transcripts
+    write_gtf <- function(data, filename) {
+        gtf_file <- data %>% ungroup() %>% distinct(gtf_path)
+        # Ensure data contains only one file
+        if (gtf_file %>% count() %>% dplyr::first() > 1) {
+            print("Has more than one GTF file in input")
+            return()
+        }
+        orig_transcripts = rtracklayer::import.gff2(gtf_file %>% dplyr::first())
+        transcripts_in_data = data %>% ungroup() %>% pull(isoform)
+        filtered_gtf <- subset(orig_transcripts, transcript_id %in% transcripts_in_data)
+        return(rtracklayer::export(filtered_gtf, filename))
+    }
+    
+    output$downloadSelectedGTF <- downloadHandler(
+        filename = "SQANTI_explorer_selected.gtf",
+        content = function(file) {
+            write_gtf(selected_data(), file)
+        }
+    )
+    
+    output$downloadFilteredGTF <- downloadHandler(
+        filename = "SQANTI_explorer_filtered_gtf.zip",
+        content = function(file){
+            #go to a temp dir to avoid permission issues
+            owd <- setwd(tempdir())
+            on.exit(setwd(owd))
+            files <- data_to_plot() %>% ungroup() %>% distinct(name) %>% pull(name) %>%
+                walk(function(row) {
+                    write_gtf(data_to_plot() %>% filter(name == row), paste0(row, ".gtf") )
+                }) %>%
+                map_chr(function(row) {
+                    paste0(row, ".gtf") 
+                })
+
+            #create the zip file
+            zip(file, files)
+        }
+    )
+    
+    output$downloadSelectedBED <- downloadHandler(
+        filename = "SQANTI_explorer_selected.bed",
+        content = function(file) {
+            write_gtf(selected_data(), file)
         }
     )
 })
