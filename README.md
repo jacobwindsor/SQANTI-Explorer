@@ -14,4 +14,4 @@ Thanks to Julien Lagarde (CRG), David Alejandro Juan Sopeña (UPF), and Luis Jos
 
 ![BIST logo](https://bist.eu/wp-content/uploads/2016/05/bist-barcelona-institute-science-and-technology-1.png)
 ![CRG logo](https://www.crg.eu/sites/default/files/logo_1.png)
-![UPF logo](https://iwch.upf.edu/19-20/imatges/UPFt_rgb.png = 500px)
+![UPF logo](https://iwch.upf.edu/19-20/imatges/UPFt_rgb.png | width=500)
