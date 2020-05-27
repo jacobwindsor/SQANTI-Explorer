@@ -21,6 +21,7 @@ require(dplyr)
 require(epivizrChart)
 library(plotly)
 library(rtracklayer)
+library(ggsci)
 
 options(shiny.maxRequestSize = 300*1024^2)
 
@@ -33,8 +34,60 @@ bar_plot = function(data, input) {
     ggplot(data, aes_string(x="name", y="n", fill=input$groupBy, customdata=input$groupBy)) + geom_bar(position="dodge", stat="identity")
 }
 
+
+# Download Transcripts
+write_isoforms <- function(data, filename, type = "gtf", cut=FALSE) {
+    gtf_file <- data %>% ungroup() %>% distinct(gtf_path)
+    # Ensure data contains only one file
+    if (gtf_file %>% count() %>% dplyr::first() > 1) {
+        print("Has more than one GTF file in input")
+        return()
+    }
+    orig_transcripts <- rtracklayer::import.gff2(gtf_file %>% dplyr::first())
+    transcripts_in_data <- NULL
+    if(cut) {
+        transcripts_in_data <-  data %>% ungroup() %>% dplyr::slice(0:1000) %>% pull(isoform)
+    }
+    else {
+        transcripts_in_data <- data %>% ungroup() %>% pull(isoform)
+    }
+    filtered_gtf <- subset(orig_transcripts, transcript_id %in% transcripts_in_data)
+    if(type=="gtf"){
+        return(rtracklayer::export.gff2(filtered_gtf, filename))   
+    }
+    if(type=="gff"){
+        return(rtracklayer::export.gff3(filtered_gtf, filename))   
+    }
+    if(type=="bed"){
+        return(rtracklayer::export.bed(filtered_gtf, filename))  
+    }
+}
+
+# Write classification file
+write_classification <- function(data, filename) {
+    write.csv(
+        data %>% select(-file, -path, -gtf_path, -genome),
+        filename, row.names = FALSE
+    )
+}
+
+write_igv_session <- function(data, filename) {
+    # Ensure data only for one name
+    if (data %>% ungroup() %>% distinct(name) %>% count() %>% dplyr::first() > 1) {
+        print("Has more than one name in input")
+        return()
+    }
+    ungrouped <- data %>% ungroup()
+    name <- ungrouped %>% select(name) %>% dplyr::first()
+    genome <- ungrouped %>% select(genome) %>% dyplr::first()
+    
+}
+
+# Add the temp beds file to the resources so can be accessed by URL
+addResourcePath('temp_beds', "temp_beds")
+
 # Define server logic required to draw a histogram
-shinyServer(function(input, output) {
+shinyServer(function(input, output, session) {
     classifications <- reactiveVal()
     makeReactiveBinding("classifications")
     
@@ -48,8 +101,7 @@ shinyServer(function(input, output) {
                     name = input$name,
                     file = input$classification_file[["name"]],
                     gtf_path = input$gtf_file[["datapath"]],
-                    fa_path = ifelse(is.null(input$FA_file), NA, input$FA_file[["datapath"]]),
-                    fai_path = ifelse(is.null(input$FAI_file), NA, input$FAI_file[["datapath"]]),
+                    genome = input$genome,
                     path = datapath,
                     classification = list(read_tsv(datapath))) %>%
                     unnest(cols=c(classification)) %>%
@@ -127,83 +179,88 @@ shinyServer(function(input, output) {
     output$count_plot <- renderPlotly({
         data_to_plot() %>% count() %>%
             ggplot(., aes_string(x="name", y="n", fill=input$groupBy, customdata=input$groupBy)) + geom_bar(position="dodge", stat="identity") +
-            xlab("Name") + ylab("N") + ggtitle("Group Counts")
+            xlab("Name") + ylab("N") + theme_bw() + scale_fill_locuszoom()
     })
     
     output$perc_plot <- renderPlotly({
         data_to_plot() %>% group_by(name) %>% count_(input$groupBy) %>% mutate(perc = n / sum(n)) %>%
             ggplot(., aes_string(x="name", y="perc", fill=input$groupBy, customdata=input$groupBy)) + geom_bar(position="fill", stat="identity") +
-            geom_perc_y + xlab("Name") + ggtitle("Group Percentages")
+            geom_perc_y + xlab("Name") + theme_bw() + scale_fill_locuszoom()
     })
     
     output$mono_plot <- renderPlotly({
         data_to_plot() %>% count(polyexonic) %>% mutate(perc = n/(sum(n))) %>%  filter(polyexonic == "Monoexonic") %>%
             ggplot(., aes_string(x="name", y="perc", fill=input$groupBy, customdata=input$groupBy)) + geom_bar(position="dodge", stat="identity") +
-            geom_perc_y +xlab("Name") + ggtitle("Percentage Monoexonic")
+            geom_perc_y +xlab("Name") + theme_bw() + scale_fill_locuszoom()
     })
     
     output$arti_plot <- renderPlotly({
         data_to_plot() %>% count(SQANTI_filter) %>% mutate(perc = n / sum(n)) %>% filter(SQANTI_filter == "Artifact") %>%
             ggplot(., aes_string(x="name", y="perc", fill=input$groupBy, customdata=input$groupBy)) + geom_bar(position="dodge", stat="identity") +
-            geom_perc_y + xlab("Name") + ggtitle("Percentage Artifacts")
+            geom_perc_y + xlab("Name") + theme_bw() + scale_fill_locuszoom()
     })
     
     output$novel_trans_plot <- renderPlotly({
         data_to_plot() %>% count(novel_transcript) %>% mutate(perc = n / sum(n)) %>% filter(novel_transcript == "Novel") %>%
             ggplot(., aes_string(x="name", y="perc", fill=input$groupBy, customdata=input$groupBy)) + geom_bar(position="dodge", stat="identity") +
-            geom_perc_y + xlab("Name") + ggtitle("Percentage Novel Transcripts")
+            geom_perc_y + xlab("Name") + theme_bw() + scale_fill_locuszoom()
     })
 
     output$novel_genes_plot <- renderPlotly({
         data_to_plot() %>% count(novel_gene) %>% mutate(perc = n / sum(n)) %>% filter(novel_gene == "Novel") %>%
             ggplot(., aes_string(x="name", y="perc", fill=input$groupBy, customdata=input$groupBy)) + geom_bar(position="dodge", stat="identity") +
-            geom_perc_y + xlab("Name") + ggtitle("Percentage Novel Genes")
+            geom_perc_y + xlab("Name") + theme_bw() + scale_fill_locuszoom()
+    })
+    
+    output$gene_expression <- renderPlot({
+        data_to_plot() %>% distinct(associated_gene, .keep_all=TRUE) %>%
+            ggplot(., aes_string(x="name", y="log_gene_exp", fill=input$groupBy, customdata=input$groupBy)) +
+            geom_violin(position=position_dodge(0.9), stat="ydensity", trim = TRUE) +
+            geom_boxplot(width = 0.15, position=position_dodge(0.9), outlier.shape=NA, ) +
+            xlab("Species") + ylab("Log(TPM)") + theme_bw() + scale_fill_locuszoom()
     })
     
     output$selected_transcript_count <- renderValueBox({
         text <- "0"
         if (!is.null(selected_data())) {
-            text <- paste0(selected_data() %>% count() %>% dplyr::first())
+            text <- paste(selected_data() %>% ungroup() %>% count() %>% dplyr::first())
         }
-        return(valueBox(
-            text, "Selected Transcripts", icon=icon("abacus"), color="yellow", fill=TRUE
-        ))
-    })
-    
-    output$selected_transcripts_count <- renderText({
-        if (is.null(selected_data())) return("Click a bar")
-        selected_data() %>% ungroup() %>%
-            count() %>% dplyr::first()
+        valueBox(
+            text, "Selected Transcripts", icon=icon("calculator"), color="yellow"
+        )
     })
 
     output$selectGenomeData <- renderUI({
-        req(classifications())
-        selectInput("genome_data", "Select Data To Visualize: ", choices = classifications() %>% distinct(name) %>% pull(name))
-    })
-    
-    output$epivizChart <- renderUI({
         validate(
-            need(data_to_plot() %>% ungroup() %>% select(fa_path) %>% map_lgl(~ all(!is.na(.x))), "Please upload at least one FASTA file."),
-            need(data_to_plot() %>% ungroup() %>% select(fai_path) %>% map_lgl(~ all(!is.na(.x))), "Please upload at least one FAI file."),
-            need(input$genome_data, "Please select a data source to visualize.")
+            need(classifications(), "Please add at least one dataset.")
         )
-        
-        input_track <- rtracklayer::GTFFile(classifications() %>% filter(name == input$genome_data) %>% select(gtf_path) %>% first())
-
-        igv <- epivizChart(
-            input_track,
-            datasource_name = "file1",
-            chr="chr1", start=5870967, end=6357783)
-
-        igv$render_component(shiny=TRUE)
+        selectInput("dataset_choice", "Select Data To Visualize: ", choices = classifications() %>% distinct(name) %>% pull(name))
     })
     
-    write_classification <- function(data, filename) {
-        write.csv(
-            data %>% select(-file, -path, -gtf_path, -fa_path, -fai_path),
-            file, row.names = FALSE
-        )
-    }
+    data_to_view <- reactive(data_to_plot() %>% ungroup() %>% filter(name == input$dataset_choice))
+    genome_name <- reactive(data_to_view() %>% distinct(genome) %>% dplyr::first())
+    
+    output$igv <- renderIgvShiny({
+        igvShiny(list(
+            genomeName="hg19",
+            initialLocus="chr1:7,063,368-14,852,449"
+        ))
+    })
+    
+    observeEvent(input$render_igv, {
+        print("running this")
+        if(input$render_igv > 0) {
+            isolate({
+                igvShiny::loadGenome(session, list(genomeName = genome_name()))
+                bed_file_name <- "temp_beds/temp.gff"
+                as_url <- bed_file_name
+                print(as_url)
+                write_isoforms(data_to_view(), bed_file_name, "gff", cut=TRUE)
+                print("written")
+                igvShiny::loadGffTrackUrl(session, trackName = input$dataset_choice, url = as_url, deleteTracksOfSameName=FALSE, color = "red")
+            })   
+        }
+    })
     
     output$downloadData <- downloadHandler(
         filename = "SQANTI_explorer.csv",
@@ -226,24 +283,10 @@ shinyServer(function(input, output) {
         }
     )
     
-    # Download Transcripts
-    write_gtf <- function(data, filename) {
-        gtf_file <- data %>% ungroup() %>% distinct(gtf_path)
-        # Ensure data contains only one file
-        if (gtf_file %>% count() %>% dplyr::first() > 1) {
-            print("Has more than one GTF file in input")
-            return()
-        }
-        orig_transcripts = rtracklayer::import.gff2(gtf_file %>% dplyr::first())
-        transcripts_in_data = data %>% ungroup() %>% pull(isoform)
-        filtered_gtf <- subset(orig_transcripts, transcript_id %in% transcripts_in_data)
-        return(rtracklayer::export(filtered_gtf, filename))
-    }
-    
     output$downloadSelectedGTF <- downloadHandler(
         filename = "SQANTI_explorer_selected.gtf",
         content = function(file) {
-            write_gtf(selected_data(), file)
+            write_isoforms(selected_data(), file)
         }
     )
     
@@ -255,7 +298,7 @@ shinyServer(function(input, output) {
             on.exit(setwd(owd))
             files <- data_to_plot() %>% ungroup() %>% distinct(name) %>% pull(name) %>%
                 walk(function(row) {
-                    write_gtf(data_to_plot() %>% filter(name == row), paste0(row, ".gtf") )
+                    write_isoforms(data_to_plot() %>% filter(name == row), paste0(row, ".gtf") )
                 }) %>%
                 map_chr(function(row) {
                     paste0(row, ".gtf") 
@@ -269,7 +312,7 @@ shinyServer(function(input, output) {
     output$downloadSelectedBED <- downloadHandler(
         filename = "SQANTI_explorer_selected.bed",
         content = function(file) {
-            write_gtf(selected_data(), file)
+            write_isoforms(selected_data(), file)
         }
     )
 })
