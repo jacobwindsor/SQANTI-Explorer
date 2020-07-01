@@ -8,5 +8,10 @@ Please submit an issue via the issue tracker for any feature requests and/or bug
 If you'd like to contribute then please contact me (Jacob Windsor) via me@jcbwndsr.com
 
 ## Support
-This project has been developed as part of the minor project for the [BIST](bist.eu) MMRES.
- 
+This project has been developed as part of the minor project for the [BIST](http://bist.eu) MMRES.
+
+Thanks to Julien Lagarde (CRG), David Alejandro Juan Sopeña (UPF), and Luis Jose Ferrandez Peral (UPF) for their mentorship.
+
+![BIST logo](https://bist.eu/wp-content/uploads/2016/05/bist-barcelona-institute-science-and-technology-1.png)
+![CRG logo](https://www.crg.eu/sites/default/files/logo_1.png)
+![UPF logo](https://iwch.upf.edu/19-20/imatges/UPFt_rgb.png)
