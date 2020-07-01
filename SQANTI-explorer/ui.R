@@ -32,7 +32,6 @@ shinyUI(dashboardPage(skin="red",
             checkboxInput("noRTS", "No RTS"),
             checkboxInput("noIntraPriming", "No intra-priming"),
             checkboxInput("allCanonical", "All Canonical SJs"),
-            checkboxInput("minCovNotNa", "No NA in min_cov"),
             checkboxInput("minCovGTZero", "min_cov > 0"),
             checkboxInput("onlyGenes", "Only Genes (does not accumulate values from transcripts)")
         )
@@ -72,7 +71,8 @@ shinyUI(dashboardPage(skin="red",
                         )
                     ),
                     column(width=8,
-                        tabBox(width=NULL,title = "Plot", 
+                        tabBox(width=NULL,title = "Plot",height = 500,
+                               tabPanel("Summary", plotlyOutput("pie_chart")),
                                tabPanel("Basic Count", plotlyOutput("count_plot")),
                                tabPanel("Basic %", plotlyOutput("perc_plot")),
                                tabPanel("% Monoexonic", plotlyOutput("mono_plot")),

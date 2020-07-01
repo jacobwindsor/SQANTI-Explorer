@@ -88,11 +88,25 @@ addResourcePath('temp_beds', "temp_beds")
 
 # Define server logic required to draw a histogram
 shinyServer(function(input, output, session) {
-    classifications <- reactiveVal()
+    # TODO: REMOVE INITIAL VALUE WHEN DONE TESTING
+    classifications <- reactiveVal(value = tibble(
+        name = "Sample human",
+        file = "Homo_sapiens.all.collapsed.filtered.rep_classification.txt_filterResults.txt",
+        gtf_path = "/home/jacob/projects/minorproj/data/frozen_filtered_isoseq/Homo_sapiens.all.collapsed.filtered.rep_corrected.gtf",
+        genome = "hg38",
+        path = "/home/jacob/projects/minorproj/data/frozen_filtered_isoseq/Homo_sapiens.all.collapsed.filtered.rep_classification.txt_filterResults.txt",
+        classification = list(read_tsv("/home/jacob/projects/minorproj/data/frozen_filtered_isoseq/Homo_sapiens.all.collapsed.filtered.rep_classification.txt_filterResults.txt"))) %>%
+            unnest(cols=c(classification)) %>%
+            mutate(polyexonic = if_else(exons > 1, "Polyexonic", "Monoexonic")) %>%
+            mutate(novel_transcript = if_else(associated_transcript == "novel", "Novel", "Annotated")) %>%
+            mutate(novel_gene = if_else(grepl("novelGene", associated_gene), "Novel", "Annotated")) %>%
+            mutate(log_gene_exp = log(gene_exp + 0.01)))
+    
     makeReactiveBinding("classifications")
     
     observeEvent(input$addClassification, {
         req(input$classification_file, input$gtf_file, input$name)
+        
         
         if(input$addClassification > 0) {
             isolate({
@@ -146,10 +160,6 @@ shinyServer(function(input, output, session) {
             val <- filter(val, all_canonical == "canonical")
         }
         
-        if (input$minCovNotNa) {
-            val <- filter(val, !is.na(min_cov))
-        }
-        
         if (input$minCovGTZero) {
             val <- filter(val, min_cov > 0)
         }
@@ -174,6 +184,88 @@ shinyServer(function(input, output, session) {
             need(classifications(), "Please add a classification file.")
         )
         classifications() %>% select(name, file) %>% distinct(name, .keep_all = TRUE)
+    })
+    
+    output$pie_chart <- renderPlotly({
+        validate(
+            need(classifications(), "Please add a classification file.")
+        )
+        count_times = 0
+
+        get_counts <- function(data, name) {
+            data <- data %>% ungroup()
+            all_canonical <- data %>% filter(all_canonical == "canonical")
+            non_canonical <- data %>% filter(all_canonical != "canonical")
+            monoexonic <- data %>% filter(exons == 1)
+            polyexonic <- data %>% filter(exons > 1)
+            RTS <- data %>% filter(RTS_stage == TRUE)
+            intra_priming <- data %>% filter(`intra-priming` == TRUE)
+            
+            get_n <- function(data) { data %>% count() %>% pull(n)}
+            df <- data.frame(
+                ids <- c(
+                    "name",
+                    "all canonical", "non canonical", "monoexonic", "polyexonic", "RTS", "intra-priming",
+                    "all canonical - RTS", "all canonical - intra-priming",
+                    "non canonical - RTS", "non canonical - intra-priming",
+                    "monoexonic - intra-priming",
+                    "polyexonic - all canonical", "polyexonic - non canonical", "polyexonic - RTS", "polyexonic - intra-priming"
+                ),
+                
+                labels <- c(
+                    name %>% pull(name),
+                    "All Canonical", "Non Canonical", "Monoexonic", "Polyexonic", "With RTS", "Intra-Priming",
+                    "RTS", "Intra-Priming",
+                    "RTS", "Intra-Priming",
+                    "Intra-Priming",
+                    "All Canonical", "Non Canonical", "RTS", "Intra-Priming"
+                ),
+                parents <- c(
+                    "",
+                    "name", "name", "name", "name","name","name",
+                    "all canonical", "all canonical",
+                    "non canonical","non canonical",
+                    "monoexonic",
+                    "polyexonic","polyexonic","polyexonic","polyexonic"
+                ),
+                values <- c(
+                    get_n(data),
+                    get_n(all_canonical), get_n(non_canonical), get_n(monoexonic), get_n(polyexonic), get_n(RTS), get_n(intra_priming),
+                    all_canonical %>% filter(RTS_stage == TRUE) %>% get_n(), all_canonical %>% filter(`intra-priming` == TRUE) %>% get_n(),
+                    non_canonical %>% filter(RTS_stage == TRUE) %>% get_n(), non_canonical %>% filter(`intra-priming` == TRUE) %>% get_n(),
+                    monoexonic %>% filter(`intra-priming` == TRUE) %>% get_n(),
+                    polyexonic %>% filter(all_canonical == "canonical") %>% get_n(), polyexonic %>% filter(all_canonical != "canonical") %>% get_n(), polyexonic %>% filter(RTS_stage == TRUE) %>% get_n(), polyexonic %>% filter(`intra-priming` == TRUE) %>% get_n()
+                ),
+                stringsAsFactors = FALSE
+            )
+            return(df)
+        }
+        
+        fig <- plot_ly()
+        group_map(classifications() %>% group_by(name), function(group_df, name) {
+            df <- get_counts(group_df, name)
+            fig <<- fig %>% add_trace(
+                ids = df$ids,
+                labels = df$labels,
+                values = df$values,
+                parents = df$parents,
+                type = "sunburst",
+                maxdepth = 3,
+                customdata = name,
+                domain = list(column = count_times)
+            )
+            count_times <<- count_times + 1
+        })
+        
+
+        fig <- fig %>% layout(grid=list(columns=count_times, rows=1),
+                              sunburstcolorway = c(
+                                  "#636efa","#EF553B","#00cc96","#ab63fa","#19d3f3",
+                                  "#e763fa", "#FECB52","#FFA15A","#FF6692","#B6E880"
+                              ),
+                              extendsunburstcolors = TRUE)
+
+        return(fig)
     })
     
     output$count_plot <- renderPlotly({
