@@ -1,5 +1,7 @@
 # SQANTI Explorer
-A data visualization tool to aid in the inter-sample analysis of the isoform characterization provided by SQANTI.
+A data visualization tool to aid in the inter-sample analysis of the isoform characterization provided by SQANTI (https://github.com/ConesaLab/SQANTI).
+
+SQANTI Explorer allows you to upload any number of datasets and analyse the isforom characteristics of each dataset. Isoforms can be filtered by a number of features (eg. polyexonic/monoexonic, RTS hallmarks etc.) and helpful graphs are built off of the filtered datasets. Furthermore, an IGV integration allows you to explore the isoforms present in each filtered dataset from within the application.
 
 ## Feature Requests/Bugs
 Please submit an issue via the issue tracker for any feature requests and/or bugs.
