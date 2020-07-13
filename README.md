@@ -1,5 +1,5 @@
 # SQANTI Explorer
-Explore SQANTI classification files. Produces several dynamic plots and filters for isoforms as well as IGV integration.
+A data visualization tool to aid in the inter-sample analysis of the isoform characterization provided by SQANTI.
 
 ## Feature Requests/Bugs
 Please submit an issue via the issue tracker for any feature requests and/or bugs.
